@@ -1,0 +1,13 @@
+# Environment variables (contains secrets)
+.env
+
+# GCP service account key
+gcp-key.json
+
+# Go binaries
+/cmd/dns-performance-test
+*.exe
+
+# OS files
+.DS_Store
+Thumbs.db
