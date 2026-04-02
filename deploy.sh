@@ -48,7 +48,6 @@ set +a
 : "${GCP_REGIONS:?GCP_REGIONS is required in .env}"
 : "${DNS_SERVERS:?DNS_SERVERS is required in .env}"
 : "${DNS_DOMAINS:?DNS_DOMAINS is required in .env}"
-: "${TEST_ITERATIONS:?TEST_ITERATIONS is required in .env}"
 : "${DNS_TIMEOUT_SEC:?DNS_TIMEOUT_SEC is required in .env}"
 
 # Defaults (only for deployment settings, not test config)
@@ -121,7 +120,6 @@ deploy_function() {
         --set-env-vars="R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}" \
         --set-env-vars="R2_BUCKET_NAME=${R2_BUCKET_NAME}" \
         --set-env-vars="TEST_REGION=${region}" \
-        --set-env-vars="TEST_ITERATIONS=${TEST_ITERATIONS}" \
         --set-env-vars="DNS_TIMEOUT_SEC=${DNS_TIMEOUT_SEC}" \
         --set-env-vars="^@^DNS_SERVERS=${DNS_SERVERS}" \
         --set-env-vars="^@^DNS_DOMAINS=${DNS_DOMAINS}" \

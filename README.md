@@ -110,7 +110,6 @@ curl http://localhost:8080/RunDNSTest
 | `R2_BUCKET_NAME` | R2 bucket name for results |
 | `DNS_SERVERS` | Comma-separated `Name=IP` pairs |
 | `DNS_DOMAINS` | Comma-separated domains to test |
-| `TEST_ITERATIONS` | Number of queries per server/domain pair |
 | `DNS_TIMEOUT_SEC` | Timeout for each DNS query |
 | `GCP_PROJECT_ID` | Google Cloud project ID |
 | `GCP_REGIONS` | Comma-separated GCP regions (see supported list below) |
@@ -154,27 +153,16 @@ Only regions that support **both** Cloud Functions and Cloud Scheduler:
   "test_id": "20260402-140000-abc1",
   "region": "us-central1",
   "timestamp": "2026-04-02T14:00:00Z",
-  "config": {
-    "iterations": 10,
-    "timeout_sec": 5
-  },
   "results": [
     {
       "dns_server": "1.1.1.1",
       "dns_provider": "Cloudflare",
       "domain": "google.com",
-      "iterations": [...],
-      "summary": {
-        "min_ms": 5.2,
-        "max_ms": 25.1,
-        "avg_ms": 12.3,
-        "median_ms": 11.5,
-        "p95_ms": 22.1,
-        "stddev_ms": 4.2,
-        "success_rate": 100,
-        "failure_count": 0,
-        "total_queries": 10
-      }
+      "rtt_ms": 12.345,
+      "success": true,
+      "rcode": "NOERROR",
+      "answer_count": 2,
+      "resolved_ips": ["142.250.80.46", "142.250.80.47"]
     }
   ]
 }
@@ -184,20 +172,35 @@ Only regions that support **both** Cloud Functions and Cloud Scheduler:
 
 ```
 your-bucket/
-├── json/
-│   └── 2026/
-│       └── 04/
-│           └── 02/
-│               ├── us-central1_2026-04-02T14-00-00Z.json
-│               ├── europe-west1_2026-04-02T14-00-00Z.json
-│               └── asia-northeast3_2026-04-02T14-00-00Z.json
-└── csv/
-    └── 2026/
-        └── 04/
-            └── 02/
-                ├── us-central1_2026-04-02T14-00-00Z.csv
-                └── ...
+├── csv/
+│   ├── us-central1/
+│   │   ├── 2026-04-02.csv    ← All results for that day (appended)
+│   │   └── 2026-04-03.csv
+│   └── europe-west1/
+│       └── 2026-04-02.csv
+└── json/
+    └── us-central1/
+        └── 2026-04-02/
+            ├── 2026-04-02T14-00-00Z.json   ← Individual test runs
+            └── 2026-04-02T14-10-00Z.json
 ```
+
+### CSV Columns
+
+| Column | Description |
+|--------|-------------|
+| test_id | Unique test run identifier |
+| region | GCP region where test ran |
+| timestamp | ISO 8601 timestamp |
+| dns_server | DNS server IP |
+| dns_provider | DNS provider name |
+| domain | Domain that was queried |
+| rtt_ms | Round-trip time in milliseconds |
+| success | true/false |
+| rcode | DNS response code (NOERROR, TIMEOUT, etc.) |
+| answer_count | Number of DNS answers |
+| resolved_ips | Resolved IP addresses |
+| error | Error message (if any) |
 
 ## Recommended DNS Servers
 

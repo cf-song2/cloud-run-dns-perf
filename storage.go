@@ -59,7 +59,7 @@ func UploadResults(ctx context.Context, r2cfg R2Config, run *TestRun) error {
 
 	// JSON: Still create individual files for detailed debugging
 	// Format: json/us-central1/2026-04-02/2026-04-02T14-00-00Z.json
-	jsonKey := fmt.Sprintf("json/%s/%s/%s.json", run.Region, dateStr, ts.Format("2006-04-02T15-04-05Z"))
+	jsonKey := fmt.Sprintf("json/%s/%s/%s.json", run.Region, dateStr, ts.Format("2006-01-02T15-04-05Z"))
 	jsonData, err := marshalJSON(run)
 	if err != nil {
 		return fmt.Errorf("marshal JSON: %w", err)
@@ -149,11 +149,8 @@ func marshalCSVRows(run *TestRun, includeHeader bool) ([]byte, error) {
 		header := []string{
 			"test_id", "region", "timestamp",
 			"dns_server", "dns_provider", "domain",
-			"iteration", "rtt_ms", "success", "rcode",
+			"rtt_ms", "success", "rcode",
 			"answer_count", "resolved_ips", "error",
-			// Summary columns (repeated per row for easier pivot table usage)
-			"avg_ms", "min_ms", "max_ms", "median_ms",
-			"p95_ms", "stddev_ms", "success_rate", "failure_count",
 		}
 		if err := w.Write(header); err != nil {
 			return nil, err
@@ -163,34 +160,22 @@ func marshalCSVRows(run *TestRun, includeHeader bool) ([]byte, error) {
 	tsStr := run.Timestamp.Format(time.RFC3339)
 
 	for _, res := range run.Results {
-		for _, iter := range res.Iterations {
-			row := []string{
-				run.TestID,
-				run.Region,
-				tsStr,
-				res.DNSServer,
-				res.DNSProvider,
-				res.Domain,
-				strconv.Itoa(iter.Iteration),
-				fmt.Sprintf("%.3f", iter.RTTMs),
-				strconv.FormatBool(iter.Success),
-				iter.RCode,
-				strconv.Itoa(iter.AnswerCount),
-				JoinIPs(iter.ResolvedIPs),
-				iter.Error,
-				// Summary
-				fmt.Sprintf("%.3f", res.Summary.AvgMs),
-				fmt.Sprintf("%.3f", res.Summary.MinMs),
-				fmt.Sprintf("%.3f", res.Summary.MaxMs),
-				fmt.Sprintf("%.3f", res.Summary.MedianMs),
-				fmt.Sprintf("%.3f", res.Summary.P95Ms),
-				fmt.Sprintf("%.3f", res.Summary.StddevMs),
-				fmt.Sprintf("%.1f", res.Summary.SuccessRate),
-				strconv.Itoa(res.Summary.FailureCount),
-			}
-			if err := w.Write(row); err != nil {
-				return nil, err
-			}
+		row := []string{
+			run.TestID,
+			run.Region,
+			tsStr,
+			res.DNSServer,
+			res.DNSProvider,
+			res.Domain,
+			fmt.Sprintf("%.3f", res.RTTMs),
+			strconv.FormatBool(res.Success),
+			res.RCode,
+			strconv.Itoa(res.AnswerCount),
+			JoinIPs(res.ResolvedIPs),
+			res.Error,
+		}
+		if err := w.Write(row); err != nil {
+			return nil, err
 		}
 	}
 

@@ -27,8 +27,8 @@ func handleDNSTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Config: region=%s, iterations=%d, servers=%d, domains=%d",
-		cfg.Region, cfg.Iterations, len(cfg.DNSServers), len(cfg.Domains))
+	log.Printf("Config: region=%s, servers=%d, domains=%d",
+		cfg.Region, len(cfg.DNSServers), len(cfg.Domains))
 
 	// Run DNS performance tests
 	run := RunDNSTest(cfg)
@@ -61,7 +61,6 @@ func handleDNSTest(w http.ResponseWriter, r *http.Request) {
 func loadConfig() (Config, error) {
 	cfg := Config{
 		Region:     getEnvOrDefault("TEST_REGION", "unknown"),
-		Iterations: getEnvAsIntOrDefault("TEST_ITERATIONS", 10),
 		TimeoutSec: getEnvAsIntOrDefault("DNS_TIMEOUT_SEC", 5),
 		R2: R2Config{
 			AccountID:  os.Getenv("R2_ACCOUNT_ID"),
