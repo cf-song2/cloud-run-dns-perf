@@ -6,6 +6,8 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"strconv"
 	"time"
 
@@ -36,7 +38,9 @@ func createR2Client(ctx context.Context, r2cfg R2Config) (*s3.Client, error) {
 	return client, nil
 }
 
-// UploadResults uploads JSON and CSV results to R2.
+// UploadResults appends results to daily CSV file and individual JSON file.
+// CSV: One file per region per day (appended)
+// JSON: One file per test run (for detailed debugging)
 func UploadResults(ctx context.Context, r2cfg R2Config, run *TestRun) error {
 	client, err := createR2Client(ctx, r2cfg)
 	if err != nil {
@@ -44,11 +48,18 @@ func UploadResults(ctx context.Context, r2cfg R2Config, run *TestRun) error {
 	}
 
 	ts := run.Timestamp
-	datePrefix := ts.Format("2006/01/02")
-	fileBase := fmt.Sprintf("%s_%s", run.Region, ts.Format("2006-01-02T15-04-05Z"))
+	dateStr := ts.Format("2006-01-02")
 
-	// Upload JSON
-	jsonKey := fmt.Sprintf("json/%s/%s.json", datePrefix, fileBase)
+	// CSV: Append to daily file per region
+	// Format: csv/us-central1/2026-04-02.csv
+	csvKey := fmt.Sprintf("csv/%s/%s.csv", run.Region, dateStr)
+	if err := appendCSVToR2(ctx, client, r2cfg.BucketName, csvKey, run); err != nil {
+		return fmt.Errorf("append CSV: %w", err)
+	}
+
+	// JSON: Still create individual files for detailed debugging
+	// Format: json/us-central1/2026-04-02/2026-04-02T14-00-00Z.json
+	jsonKey := fmt.Sprintf("json/%s/%s/%s.json", run.Region, dateStr, ts.Format("2006-04-02T15-04-05Z"))
 	jsonData, err := marshalJSON(run)
 	if err != nil {
 		return fmt.Errorf("marshal JSON: %w", err)
@@ -57,17 +68,56 @@ func UploadResults(ctx context.Context, r2cfg R2Config, run *TestRun) error {
 		return fmt.Errorf("upload JSON: %w", err)
 	}
 
-	// Upload CSV
-	csvKey := fmt.Sprintf("csv/%s/%s.csv", datePrefix, fileBase)
-	csvData, err := marshalCSV(run)
-	if err != nil {
-		return fmt.Errorf("marshal CSV: %w", err)
+	return nil
+}
+
+// appendCSVToR2 downloads existing CSV (if any), appends new rows, and uploads.
+func appendCSVToR2(ctx context.Context, client *s3.Client, bucket, key string, run *TestRun) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	var existingData []byte
+	needsHeader := true
+
+	// Try to get existing file
+	getResult, err := client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err == nil {
+		defer getResult.Body.Close()
+		existingData, err = io.ReadAll(getResult.Body)
+		if err != nil {
+			log.Printf("WARN: failed to read existing CSV: %v", err)
+			existingData = nil
+		} else if len(existingData) > 0 {
+			needsHeader = false
+		}
 	}
-	if err := uploadToR2(ctx, client, r2cfg.BucketName, csvKey, csvData, "text/csv"); err != nil {
-		return fmt.Errorf("upload CSV: %w", err)
+	// If file doesn't exist, that's fine - we'll create it
+
+	// Generate new CSV rows
+	newData, err := marshalCSVRows(run, needsHeader)
+	if err != nil {
+		return fmt.Errorf("marshal CSV rows: %w", err)
 	}
 
-	return nil
+	// Combine existing + new data
+	var finalData []byte
+	if len(existingData) > 0 {
+		finalData = append(existingData, newData...)
+	} else {
+		finalData = newData
+	}
+
+	// Upload combined data
+	_, err = client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(bucket),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader(finalData),
+		ContentType: aws.String("text/csv"),
+	})
+	return err
 }
 
 // uploadToR2 uploads a byte slice to an R2 bucket.
@@ -89,24 +139,25 @@ func marshalJSON(run *TestRun) ([]byte, error) {
 	return json.MarshalIndent(run, "", "  ")
 }
 
-// marshalCSV serializes the test run to CSV format.
-// Each row represents a single query iteration for easy analysis.
-func marshalCSV(run *TestRun) ([]byte, error) {
+// marshalCSVRows generates CSV rows, optionally with header.
+func marshalCSVRows(run *TestRun, includeHeader bool) ([]byte, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 
-	// Write header
-	header := []string{
-		"test_id", "region", "timestamp",
-		"dns_server", "dns_provider", "domain",
-		"iteration", "rtt_ms", "success", "rcode",
-		"answer_count", "resolved_ips", "error",
-		// Summary columns (repeated per row for easier pivot table usage)
-		"avg_ms", "min_ms", "max_ms", "median_ms",
-		"p95_ms", "stddev_ms", "success_rate", "failure_count",
-	}
-	if err := w.Write(header); err != nil {
-		return nil, err
+	// Write header only if needed
+	if includeHeader {
+		header := []string{
+			"test_id", "region", "timestamp",
+			"dns_server", "dns_provider", "domain",
+			"iteration", "rtt_ms", "success", "rcode",
+			"answer_count", "resolved_ips", "error",
+			// Summary columns (repeated per row for easier pivot table usage)
+			"avg_ms", "min_ms", "max_ms", "median_ms",
+			"p95_ms", "stddev_ms", "success_rate", "failure_count",
+		}
+		if err := w.Write(header); err != nil {
+			return nil, err
+		}
 	}
 
 	tsStr := run.Timestamp.Format(time.RFC3339)
