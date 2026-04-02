@@ -73,7 +73,7 @@ trigger: ## Trigger all functions manually
 	echo "=== Results ==="; \
 	for region in $$(grep GCP_REGIONS .env | cut -d= -f2 | tr ',' ' '); do \
 		if [ -f "/tmp/dns-result-$$region.json" ]; then \
-			test_id=$$(cat /tmp/dns-result-$$region.json 2>/dev/null | grep -o '"test_id":"[^"]*"' | head -1 | cut -d'"' -f4); \
+			test_id=$$(cat /tmp/dns-result-$$region.json 2>/dev/null | grep -o '"test_id": *"[^"]*"' | head -1 | sed 's/.*: *"//;s/"$$//'); \
 			if [ -n "$$test_id" ]; then \
 				echo "✅ $$region: $$test_id"; \
 			else \
